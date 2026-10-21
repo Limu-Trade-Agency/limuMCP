@@ -85,6 +85,16 @@ Run `npm run smoke:oauth` to verify protected-resource metadata and audience che
 
 The remote migration currently covers OAuth-protected health/userinfo, clients, cargo, cargo packages, shipments, monthly budgets, budget reports, purchase schedules, imports-and-orders, import-product, leads, client-profile reports, and a controlled QuickBooks accounting slice. The leads report returns conversion, source, segment, tag, and pipeline analytics while enforcing the viewer's portal report permissions. The client-profile report summarizes clients active in a selected cargo-activity period, including demographics, tiers, and relations-officer coverage. Requisition, payment voucher, and leave tools remain registered with explicit "portal endpoint pending" responses until their matching portal endpoints are added.
 
+### Cargo status corrections through the portal
+
+`limu_update_cargo_status` calls `POST /Api/v1/cargo/update-status.php`. Deploy that endpoint and `status-update-engine.php` before the MCP release. It requires an authenticated employee, `cargo:write`, and Cargo edit permission. It accepts assigned cargo only; Created/Booked are handled by the existing creation and assignment tools.
+
+Provide `cargoId`, `expectedShipmentId`, the exact `expectedStatus`, the requested `status` (including Collected), and a 3–500 character `reason`. Calls default to a server-validated preview with no writes. To save, reuse the preview token with `dryRun: false`, `confirm: true`, and a stable `idempotencyKey`. Stale cargo/shipment/owner state returns a conflict. Exact retries by the same employee return the original result; key reuse with different input is rejected.
+
+This is an administrative status correction. It changes only `cargo.cargostatus`, with a cargo log and the existing MCP audit row in one transaction. It does not create a collection receipt, invent collector details, change finance/dispatch fields, or send notifications. Same-status requests are no-ops. No schema migration is required; the existing audit-table helper is reused only on confirmed calls.
+
+Validation: `npm run smoke:cargo-status` and `php tests/cargo-status-update-test.php` in the portal. The Cargo status checks workflow also runs MySQL integration tests for save/retry/no-op behavior, stale previews, unrelated-field isolation, and rollback on log failure. Rollback: remove the MCP registration and the two new PHP files; already saved audit/history rows remain intact.
+
 ### QuickBooks through the portal
 
 The portal is the sole owner of the QuickBooks OAuth connection and keeps its Intuit tokens in the portal database. The MCP never receives or returns those credentials.
@@ -139,6 +149,7 @@ Most MCP clients should launch it over stdio. Example client config:
 - `limu_update_client`
 - `limu_list_cargo`
 - `limu_get_cargo`
+- `limu_update_cargo_status` (Vercel HTTP mode)
 - `limu_create_cargo`
 - `limu_merge_cargo`
 - `limu_assign_cargo_shipment`

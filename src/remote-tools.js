@@ -234,6 +234,37 @@ export function registerRemoteTools(server) {
   );
 
   server.registerTool(
+    'limu_update_cargo_status',
+    {
+      title: 'Update cargo status',
+      description: 'Preview or correct the recorded status of one shipment cargo, including Collected. Requires cargo:write and Cargo edit permission. Supply the exact current status and shipment ID plus a reason. This updates only the cargo status and audit log; it does not create collection receipts, change finance/dispatch fields, or send notifications. Preview first, then reuse its previewToken with dryRun=false, confirm=true and a stable idempotencyKey. Exact retries return the saved result.',
+      inputSchema: {
+        cargoId: z.number().int().positive(),
+        expectedShipmentId: z.number().int().positive(),
+        expectedStatus: z.string().trim().min(1).max(64),
+        status: z.enum(['Loaded', 'Offloaded', 'Warehouse Check', 'Processed', 'Ready for Dispatch', 'Dispatched', 'Collected']),
+        reason: z.string().trim().min(3).max(500),
+        dryRun: z.boolean().default(true),
+        confirm: z.boolean().default(false),
+        previewToken: previewTokenSchema,
+        idempotencyKey: actionKeySchema,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    },
+    async ({ dryRun = true, confirm = false, ...input }, extra) => {
+      if (!dryRun && confirm && (!input.previewToken || !input.idempotencyKey)) {
+        throw new Error('Confirmed status updates require previewToken and idempotencyKey from a reviewed dry run.');
+      }
+      const data = await portalRequest('/Api/v1/cargo/update-status.php', {
+        token: authToken(extra),
+        method: 'POST',
+        body: { ...input, dryRun, confirm },
+      });
+      return jsonToolResult(data);
+    }
+  );
+
+  server.registerTool(
     'limu_create_cargo',
     {
       title: 'Create cargo',
